@@ -25,7 +25,7 @@ mod test;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let matches = clap_app!(mesh =>
+    let matches = clap_app!(mshrt =>
         (author: "Sharp Hall <sharp@sharphall.org>")
         (version: crate_version!())
         (@arg config: -c --config +takes_value "Sets a custom config file")

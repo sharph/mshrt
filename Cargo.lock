@@ -1045,32 +1045,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mesh"
-version = "0.1.0"
-dependencies = [
- "aes-gcm",
- "anyhow",
- "async-trait",
- "base64",
- "bincode",
- "bytes",
- "clap_conf",
- "colog",
- "ed25519-dalek",
- "futures-util",
- "http",
- "log",
- "ml-kem",
- "pnet",
- "rand 0.8.5",
- "serde",
- "tokio",
- "tokio-websockets",
- "tun-rs",
- "x25519-dalek",
-]
-
-[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1106,6 +1080,32 @@ dependencies = [
  "kem",
  "rand_core 0.6.4",
  "sha3",
+]
+
+[[package]]
+name = "mshrt"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "async-trait",
+ "base64",
+ "bincode",
+ "bytes",
+ "clap_conf",
+ "colog",
+ "ed25519-dalek",
+ "futures-util",
+ "http",
+ "log",
+ "ml-kem",
+ "pnet",
+ "rand 0.8.5",
+ "serde",
+ "tokio",
+ "tokio-websockets",
+ "tun-rs",
+ "x25519-dalek",
 ]
 
 [[package]]
