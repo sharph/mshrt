@@ -267,7 +267,7 @@ impl CryptoState {
     }
 
     fn handle_key_exchange_1(&mut self, kex_msg: &KeyExchangeMessage) -> Result<()> {
-        let kex = KeyExchange::new_from_other_message(kex_msg);
+        let kex = KeyExchange::new_from_other_message(kex_msg)?;
         if let Some(kex_2) = &self.key_exchange_message_2
             && let Some(session) = &self.decrypt_session
             && kex_msg.get_session_id() == kex_2.get_session_id()
@@ -400,6 +400,7 @@ pub fn run_unicast_connection(
                             }
                         }
                         UnicastMessagePayload::CantDecrypt(session_id) => {
+                            log::trace!("can't decrypt");
                             if let Some(our_session) = &crypto_state.encrypt_session
                                 && our_session.get_session_id() == session_id
                                 && msg.signature_valid().unwrap_or(false)
@@ -408,10 +409,13 @@ pub fn run_unicast_connection(
                             }
                         }
                         UnicastMessagePayload::KeyExchange1(kex) => {
+                            log::trace!("kex1");
                             if !msg.signature_valid().unwrap_or(false) {
                                 continue;
                             }
-                            let _ = crypto_state.handle_key_exchange_1(kex);
+                            if let Err(e) = crypto_state.handle_key_exchange_1(kex) {
+                                log::error!("{}", e);
+                            };
                             if let Some(route) = routes.get_route()
                                 && let Some(kex2) = crypto_state.get_key_exchange_2()
                                 && let Ok(msg) = MeshMessage::unicast_sign(
@@ -425,12 +429,16 @@ pub fn run_unicast_connection(
                             }
                         }
                         UnicastMessagePayload::KeyExchange2(kex) => {
+                            log::trace!("kex2");
                             if !msg.signature_valid().unwrap_or(false) {
                                 continue;
                             }
-                            let _ = crypto_state.handle_key_exchange_2(kex);
+                            if let Err(e) = crypto_state.handle_key_exchange_2(kex) {
+                                log::error!("{}", e);
+                            }
                         }
                         UnicastMessagePayload::Ping(val, t) => {
+                            log::trace!("ping");
                             let msg = MeshMessage::unicast(
                                 our_id.public_id.clone(),
                                 their_id.clone(),
@@ -440,6 +448,7 @@ pub fn run_unicast_connection(
                             let _ = tx.send(RouterMessage::SendMessage(msg)).await;
                         }
                         UnicastMessagePayload::Pong(val, t) => {
+                            log::trace!("pong");
                             let _ = routes.observe_route(&msg.trace, &(*val, *t));
                         }
                     }

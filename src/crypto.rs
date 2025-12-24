@@ -9,6 +9,10 @@ use ed25519_dalek::Signature;
 use ed25519_dalek::ed25519::SignatureBytes;
 use ed25519_dalek::ed25519::signature::SignerMut;
 use ed25519_dalek::{SigningKey, Verifier, VerifyingKey};
+use ml_kem::{
+    EncodedSizeUser, KemCore, MlKem768, MlKem768Params,
+    kem::{Decapsulate, DecapsulationKey, Encapsulate, EncapsulationKey},
+};
 use rand::Rng;
 use rand::rngs::OsRng;
 use x25519_dalek::{EphemeralSecret, PublicKey};
@@ -89,10 +93,22 @@ impl PrivateIdentity {
     }
 }
 
+type MLKem768EncapsulationKey = [u8; 1184];
+type MLKem768DecapsulationKey = [u8; 2400];
+type MLKem768Ciphertext = [u8; 1088];
+type MLKemSharedSecret = [u8; 32];
+
+#[derive(Eq, PartialEq, Encode, Decode, Clone, Hash, Debug)]
+enum MLKemMessage {
+    EncapsulationKey(MLKem768EncapsulationKey),
+    Ciphertext(MLKem768Ciphertext),
+}
+
 #[derive(Eq, PartialEq, Encode, Decode, Clone, Hash, Debug)]
 pub struct KeyExchangeMessage {
     session_id: SessionId,
     public: [u8; 32],
+    ml_kem: MLKemMessage,
 }
 
 impl KeyExchangeMessage {
@@ -104,6 +120,9 @@ impl KeyExchangeMessage {
 pub struct KeyExchange {
     secret: EphemeralSecret,
     session_id: SessionId,
+    ml_kem_msg: MLKemMessage,
+    ml_kem_dk: Option<MLKem768DecapsulationKey>,
+    ml_kem_secret: Option<MLKemSharedSecret>,
 }
 
 impl KeyExchange {
@@ -112,20 +131,43 @@ impl KeyExchange {
         let secret = EphemeralSecret::random_from_rng(osrng);
         let mut session_id: SessionId = [0; 8];
         osrng.fill(&mut session_id);
-        Self { secret, session_id }
+        let (dk, ek) = MlKem768::generate(&mut osrng);
+        Self {
+            secret,
+            session_id,
+            ml_kem_msg: MLKemMessage::EncapsulationKey(ek.as_bytes().into()),
+            ml_kem_dk: Some(dk.as_bytes().into()),
+            ml_kem_secret: None,
+        }
     }
 
-    pub fn new_from_other_message(other_kex: &KeyExchangeMessage) -> Self {
-        let osrng = OsRng;
+    pub fn new_from_other_message(other_kex: &KeyExchangeMessage) -> Result<Self> {
+        let mut osrng = OsRng;
         let secret = EphemeralSecret::random_from_rng(osrng);
         let session_id = other_kex.session_id;
-        Self { secret, session_id }
+        Ok(match other_kex.ml_kem {
+            MLKemMessage::EncapsulationKey(k) => {
+                let ek: EncapsulationKey<MlKem768Params> = EncapsulationKey::from_bytes(&k.into());
+                let Ok((ct, ss)) = ek.encapsulate(&mut osrng) else {
+                    bail!("mlkem encapsulation failed");
+                };
+                Self {
+                    secret,
+                    session_id,
+                    ml_kem_msg: MLKemMessage::Ciphertext(ct.into()),
+                    ml_kem_dk: None,
+                    ml_kem_secret: Some(ss.into()),
+                }
+            }
+            _ => bail!("wrong key exchange message type"),
+        })
     }
 
     pub fn public(&self) -> KeyExchangeMessage {
         KeyExchangeMessage {
             session_id: self.session_id,
             public: PublicKey::from(&self.secret).to_bytes(),
+            ml_kem: self.ml_kem_msg.clone(),
         }
     }
 
@@ -140,17 +182,35 @@ impl KeyExchange {
         if other_kex.session_id != self.session_id {
             bail!("session_id doesn't match")
         }
+        let ml_kem_secret: MLKemSharedSecret = match (
+            self.ml_kem_secret,
+            self.ml_kem_msg,
+            &other_kex.ml_kem,
+            self.ml_kem_dk,
+        ) {
+            (None, MLKemMessage::EncapsulationKey(_), MLKemMessage::Ciphertext(ct), Some(dk)) => {
+                let dk: DecapsulationKey<MlKem768Params> = DecapsulationKey::from_bytes(&dk.into());
+                match dk.decapsulate(ct.into()) {
+                    Ok(v) => v.into(),
+                    Err(_) => bail!("can't decapsulate ml kem key"),
+                }
+            }
+            (Some(ss), MLKemMessage::Ciphertext(_), MLKemMessage::EncapsulationKey(_), None) => ss,
+            _ => bail!("got wrong kind of key exchange message for current key exchange"),
+        };
         let mut new_session_id: [u8; 8] =
             PublicKey::from(&self.secret).to_bytes()[0..8].try_into()?;
         for (a, b) in new_session_id.iter_mut().zip(other_kex.public) {
             *a ^= b;
         }
-        Ok(EncryptionSession::new(
-            new_session_id,
-            self.secret
-                .diffie_hellman(&PublicKey::from(other_kex.public))
-                .to_bytes(),
-        ))
+        let mut secret_bytes = self
+            .secret
+            .diffie_hellman(&PublicKey::from(other_kex.public))
+            .to_bytes();
+        for (a, b) in secret_bytes.iter_mut().zip(ml_kem_secret.into_iter()) {
+            *a ^= b;
+        }
+        Ok(EncryptionSession::new(new_session_id, secret_bytes))
     }
 }
 
