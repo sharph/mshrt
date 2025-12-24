@@ -20,6 +20,9 @@ mod udp;
 mod unicast;
 mod websockets;
 
+#[cfg(test)]
+mod test;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let matches = clap_app!(mesh =>

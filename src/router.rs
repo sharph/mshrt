@@ -14,7 +14,13 @@ use crate::proto::{
 use crate::unicast::{UnicastConnection, run_unicast_connection};
 
 const FLOOD_DB_SIZE: usize = 1024 * 8;
-const FLOOD_ANNOUNCE_SEC: u64 = 10;
+
+#[cfg(not(test))]
+const FLOOD_ANNOUNCE_PERIOD: Duration = Duration::from_secs(10);
+
+#[cfg(test)]
+const FLOOD_ANNOUNCE_PERIOD: Duration = Duration::from_millis(100);
+const FLOOD_ANNOUNCE_SEC: u64 = 1;
 
 pub struct UntaggedConnection(
     pub mpsc::Sender<RawMessage>,
@@ -290,8 +296,7 @@ impl RouteDB {
     }
 
     async fn trim_routes(&mut self) {
-        let Some(del_before) =
-            Instant::now().checked_sub(Duration::from_secs(FLOOD_ANNOUNCE_SEC * 3))
+        let Some(del_before) = Instant::now().checked_sub(FLOOD_ANNOUNCE_PERIOD.saturating_mul(3))
         else {
             return;
         };
@@ -307,9 +312,10 @@ impl RouteDB {
         let rec = self.get_or_create_route(id);
         rec.observe(route).await;
         log::debug!(
-            "this route {:?}, shortest {:?}",
+            "this route {:?}, shortest {:?} for {:?}",
             route.len(),
-            rec.shortest_route().map(|r| r.len())
+            rec.shortest_route().map(|r| r.len()),
+            id
         );
         if let Some(shortest) = rec.shortest_route()
             && shortest.len() == route.len()
@@ -623,7 +629,7 @@ pub async fn run_router(id: PrivateIdentity) -> Result<(JoinHandle<()>, RouterIn
 
     tokio::task::spawn_local(async move {
         loop {
-            tokio::time::sleep(Duration::from_secs(5)).await;
+            tokio::time::sleep(FLOOD_ANNOUNCE_PERIOD).await;
             let Ok(_) = tx.send(RouterMessage::SendFlood).await else {
                 return;
             };
