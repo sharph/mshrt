@@ -40,19 +40,19 @@ OPTIONS:
 ### Machine A (1.2.3.4)
 
 ```plain
-mshrt -u 0.0.0.0:1111 -tun true
+mshrt -u 0.0.0.0:1111 --tun true
 ```
 
 ### Machine B (2.3.4.5)
 
 ```plain
-mshrt -u 0.0.0.0:1111 -U 1.2.3.4:1111 -tun true
+mshrt -u 0.0.0.0:1111 -U 1.2.3.4:1111 --tun true
 ```
 
 ### Machine C (3.4.5.6)
 
 ```plain
-mshrt -u 0.0.0.0 -U 2.3.4.5:1111 -tun true
+mshrt -u 0.0.0.0 -U 2.3.4.5:1111 --tun true
 ```
 
 Machine C should now be able to communicate to Machine A over the IPv6 address
