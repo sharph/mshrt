@@ -2,6 +2,7 @@
 name = "mshrt"
 version = "0.1.0"
 edition = "2024"
+repository = "https://github.com/sharph/mshrt"
 
 [dependencies]
 aes-gcm = "0.10.3"
@@ -24,3 +25,8 @@ tokio = { version = "1.45.0", features = ["full", "net", "rt", "sync"] }
 tokio-websockets = { version = "0.11.4", features = ["client", "native-tls", "openssl", "rand", "server"] }
 tun-rs = { version = "2.4.3", features = ["async_framed", "async_tokio"] }
 x25519-dalek = "2.0.1"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
